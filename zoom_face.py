@@ -24,20 +24,26 @@ fps = cap.get(cv2.CAP_PROP_FPS)
 
 print(f"Camera properties: width={original_width}, height={original_height}, fps={fps}")
 
-# Parameters for smoothing transitions
-smoothing_factor = 0.05  # A smaller value will slow down the transition
-padding_factor = 2.5  # Increase this factor to add more space around the face
+# Virtual camera dimensions (fixed at 1280x720)
+virtual_width = 1280
+virtual_height = 720
 
-# Initial target and current positioning
-target_cx = original_width // 2
-target_cy = original_height // 2
+virtual_aspect_ratio = virtual_width / virtual_height  # Key change!
+
+# Parameters for smoothing transitions
+smoothing_factor = 0.01  # A smaller value will slow down the transition
+padding_factor = 4.5  # Increase this factor to add more space around the face
+
+
+target_cx = virtual_width // 2
+target_cy = virtual_height // 2
 current_cx = target_cx
 current_cy = target_cy
-target_crop_size = min(original_width, original_height) // 2
+target_crop_size = min(virtual_width, virtual_height) // 2
 current_crop_size = target_crop_size
 
 # Open the virtual camera.
-with pyvirtualcam.Camera(width=original_width, height=original_height, fps=fps) as virtual_cam:
+with pyvirtualcam.Camera(width=virtual_width, height=virtual_height, fps=fps) as virtual_cam:
     print(f"Virtual camera started: {virtual_cam.device}")
 
     while True:
@@ -64,38 +70,35 @@ with pyvirtualcam.Camera(width=original_width, height=original_height, fps=fps) 
         current_cx = int(current_cx + (target_cx - current_cx) * smoothing_factor)
         current_cy = int(current_cy + (target_cy - current_cy) * smoothing_factor)
         current_crop_size = int(current_crop_size + (target_crop_size - current_crop_size) * smoothing_factor)
-
-        # Calculate aspect-ratio maintained crop box
-        aspect_ratio = original_width / original_height
-
-        # Determine crop dimensions while maintaining the aspect ratio
-        if current_crop_size * aspect_ratio > current_crop_size:
+        
+        # Aspect ratio correction for cropping (using VIRTUAL aspect ratio)
+        if current_crop_size * virtual_aspect_ratio > current_crop_size: # Use virtual AR
             crop_width = current_crop_size
-            crop_height = int(current_crop_size / aspect_ratio)
+            crop_height = int(current_crop_size / virtual_aspect_ratio)
         else:
             crop_height = current_crop_size
-            crop_width = int(current_crop_size * aspect_ratio)
+            crop_width = int(current_crop_size * virtual_aspect_ratio)
 
-        # Calculate crop box with clamping to frame dimensions
+
+        # Calculate crop box (clamping and centering)
         x1 = max(0, current_cx - crop_width // 2)
         y1 = max(0, current_cy - crop_height // 2)
         x2 = min(original_width, current_cx + crop_width // 2)
         y2 = min(original_height, current_cy + crop_height // 2)
 
-        # Crop the frame to the calculated region
+        # Crop the frame
         cropped_frame = frame[y1:y2, x1:x2]
 
-        # Resize the cropped region to original frame size
-        zoomed_frame = cv2.resize(cropped_frame, (original_width, original_height), interpolation=cv2.INTER_LINEAR)
+        # Resize the cropped frame to the virtual camera's dimensions
+        resized_frame = cv2.resize(cropped_frame, (virtual_width, virtual_height), interpolation=cv2.INTER_LINEAR)
 
-        # Convert the frame to RGB.
-        frame_rgb = cv2.cvtColor(zoomed_frame, cv2.COLOR_BGR2RGB)
+        # Convert to RGB
+        frame_rgb = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2RGB)
 
-        # Send the frame to the virtual camera.
+        # Send to virtual camera
         virtual_cam.send(frame_rgb)
-
-        # Wait for the next frame based on camera FPS.
         virtual_cam.sleep_until_next_frame()
+
 
 # Release resources.
 cap.release()
